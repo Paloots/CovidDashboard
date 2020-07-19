@@ -1,0 +1,945 @@
+---
+title: "COVID-19 Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(ggmap)
+library(tidyverse)
+library(dplyr)
+library(leaflet)
+library(ggplot2)
+library(viridis)
+library(hrbrthemes)
+library(plotly)
+library(lemon)
+library(lubridate)
+library(zoo)
+library(sqldf)
+```
+
+```{r include=FALSE}
+Heat_Map_Data<- read.csv("Merged Data//Provincial_wc.csv")
+
+options(scipen = 999)
+
+``` 
+
+
+```{r include=FALSE}
+## Selecting Max values from Western Cape data  
+
+infect_town<-Heat_Map_Data %>% group_by(Town) %>% slice(which.max(Infected)) %>%  arrange(Infected) %>% drop_na()
+
+infect_town
+```
+```{r include=FALSE}
+
+#Create Color gradient for Map of Western Cape
+Col_Gradient<- c("green","red")
+## create color pallet based on Gradient and Calibrated with global cases
+pal<- colorFactor(Col_Gradient,infect_town$Infected)
+infect_town<- infect_town %>% mutate(PopUp=paste(Town,"<br/>","Number of Infected People",Infected))
+MapWC<- leaflet() %>% addTiles() %>% 
+  addCircleMarkers(data = infect_town,lat = ~latitude,lng = ~longitude,color = ~pal(Infected),radius = ~3,popup = ~PopUp)
+
+```
+
+
+```{r include=FALSE}
+# import global data
+World_map_data<- read.csv("Merged Data/Global_Max_Country.csv")
+```
+
+
+```{r include=FALSE}
+
+
+infect_World<- World_map_data
+
+# Adding Pop-Up message to the data to be used in map 
+
+infect_World<- infect_World %>% mutate(PopUp=paste(Country.Region,"<br/>","Number of Infected People:",Cases,
+                                                   "<br/>","Number of deaths:",Deaths,"<br/>",
+                                                   "Number of recoveries:",Recoveries
+                                                   ))
+
+```
+
+```{r include=FALSE}
+# Create color gradient for map 
+Col_Gradient2<- c("green","red")
+# create color pallet based on Gradient and Calibrated with global cases  
+pal2<- colorFactor(Col_Gradient2,infect_World$Cases)
+# Plotting Points on the map
+Map_World<-leaflet() %>% addTiles() %>% 
+  addCircleMarkers(data = infect_World ,lat = ~Lat,lng = ~Long,color = ~pal2(Cases),radius = ~3,popup = ~PopUp)
+
+```
+
+```{r include=FALSE}
+
+# World map plot 
+Map_WORLD_Merged<-leaflet()%>%
+  addTiles() %>%
+  addCircleMarkers(data = infect_World ,lat = ~Lat,lng = ~Long,color = ~pal2(Cases),radius = ~4,popup = ~PopUp)
+  
+```
+
+
+# Global 
+
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### World map
+
+```{r}
+Map_WORLD_Merged
+```
+
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Top 20 Cases 
+
+```{r}
+# Arranging data from high to low based on cases 
+
+topCases<- World_map_data %>% arrange(desc(Cases))
+topCases$Country.Region<- factor(topCases$Country.Region , levels = topCases$Country.Region[order(topCases$Cases)])
+
+# select and plot the first 20 
+top20cases <- topCases[1:20,]%>% ggplot(aes(x=Country.Region, y=Cases)) +
+  geom_bar(stat="identity", color="blue",fill="blue") + ggtitle("Top 20 most infected countries") + labs(y= "Total Confirmed Cases", x = "Country") + theme_bw() + theme(axis.text.x = element_text(angle = 45))
+
+ggplotly(top20cases) ### Plotly is used with all graphs in able to display variable data when hovering over axes values
+
+```
+
+
+### Top 20 Recoveries
+
+```{r}
+
+#Arrange from high to low  
+
+toprecoveries <- World_map_data %>% arrange(desc(Recoveries))
+
+toprecoveries$Country.Region <- factor(toprecoveries$Country.Region , levels =toprecoveries$Country.Region[order(toprecoveries$Recoveries)])
+
+# select and plot the first 20
+
+top20rec <- toprecoveries[1:20,] %>% ggplot(aes(x=Country.Region, y=Recoveries)) +
+  geom_bar(stat="identity", color="green",fill="green") + ggtitle("Global Top 20  Recoveries") + labs(y= "Total Confirmed Recoveries", x = "Country") + theme_bw() + theme(axis.text.x = element_text(angle = 45))
+ggplotly(top20rec)
+
+```
+
+
+### Top 20 Deaths 
+
+```{r}
+
+# Sort from high to low and select top 20 
+topdeaths <-  World_map_data %>% arrange(desc(Deaths))
+topdeaths<- topdeaths[1:20,]
+
+topdeaths$Country.Region <- factor(topdeaths$Country.Region , levels = topdeaths$Country.Region[order(topdeaths$Deaths)])
+
+top20deaths <- topdeaths %>% ggplot(aes(x=Country.Region, y=Deaths)) +
+  geom_bar(stat="identity", color="red",fill="red") + ggtitle("Global Top 20 Deaths") + labs(y= "Total Confirmed Cases", x = "Country") + theme_bw() + theme(axis.text.x = element_text(angle = 45))
+ggplotly(top20deaths)
+
+```
+
+
+
+
+#South Africa
+```{r include=FALSE}
+RSA_covid <- read_csv("Merged Data/RSA_Covid.csv")
+RSA_Pop<- read_csv("Merged Data/RSA_PopH.csv")
+
+```
+
+```{r include=FALSE}
+RSA_Gender<- read_csv(file = "Data/Deaths_gender_RSA.csv")
+RSA_Age<- read_csv(file = "Data/Deaths_Age_RSA.csv")
+RSA_Age <- RSA_Age %>% slice(-n())
+RSA_Tests<- read_csv(file="Merged Data/Test_RSA.csv")
+```
+
+
+
+```{r include=FALSE}
+head(RSA_covid)
+
+test2 <- RSA_covid %>% group_by(Province)%>% select(`Province`,`Cases`, `Recoveries`, `Deaths`) %>% slice(which.max(Cases)) %>% arrange(Cases,Recoveries)
+
+```
+
+```{r include=FALSE}
+test3 <- test2 %>% 
+  pivot_longer(c(`Cases`, `Recoveries`, `Deaths`), names_to = "Case_Type", values_to = "Total_Cases")
+
+```
+
+```{r include=FALSE}
+
+# Provincial summary 
+prov_sum <- test3 %>% ggplot(aes(fill=Case_Type, y=Total_Cases, x=Province)) + 
+    geom_bar(stat="identity", position=position_dodge()) + facet_wrap(~ Province, scales = "free", ncol = 5 ) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5,size = 20, face = "bold")) + labs(x = NULL, y=NULL, fill = "",title = "Cases by Province") + scale_fill_manual(values=c("#ADD8E6", "#FF0000", "#90EE90"))
+prov_sum1<- ggplotly(prov_sum)
+
+```
+
+
+```{r include=FALSE}
+
+RSA_covid$date<-as.Date(as.character(RSA_covid$date),format="%d-%m-%Y")
+RSA_covid <- arrange(RSA_covid , date)
+
+RSA_covid$Active_Cases <- RSA_covid$Cases - RSA_covid$Deaths - RSA_covid$Recoveries
+
+#get the latest (newest) date in dataset and use as final break when plotting dates on Y-axis
+recentdate = sqldf("SELECT 
+              max(date) as 'max__Date'
+              FROM RSA_covid", method = "name__class") 
+# convert date to character
+maxdate <- as.character(recentdate$max)
+
+
+# use function to extract the last day of each month in a dataframe 
+LastDayInMonth <- function(dt)
+{
+  dt <- (as.character(dt))
+  dt <- as.character(as.Date(dt) %m+% months(1))
+  dt <- as.Date(ISOdate(as.numeric(substr(dt, 1, 4)),
+                        as.numeric(substr(dt, 6, 7)),
+                        1) - days(1))
+  return(dt)
+}
+
+# create a list of end-of-month dates to insert as breaks when plotting dates on Y-axis. See example on timeline charts
+last_dates <- LastDayInMonth(RSA_covid$date)
+last_dates1 <- unique(last_dates) 
+Len_Dates<- length(last_dates1)
+list <- c(last_dates1[-Len_Dates],recentdate$max) 
+
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Map Of Western Cape 
+
+```{r}
+#Printing map of Western Cape 
+MapWC
+```
+
+Column {data-width=350}
+--------
+
+### Number of tests done 
+
+```{r}
+## Transforming the date column from character to a date 
+RSA_Tests$date<- as.Date(as.character(RSA_Tests$date),format="%d-%m-%Y")
+
+#Extracting the Max amount of Cumulative Tests. AKA the total tests 
+RSA_Max_Test<- RSA_Tests %>% slice(which.max(cumulative_tests))
+
+```
+
+```{r}
+#Putting total tests in a colour box as part of infographic 
+valueBox(RSA_Max_Test$cumulative_tests, icon = "ion-erlenmeyer-flask", color = "gray")
+```
+
+
+
+### Positive Cases
+```{r}
+## Extracts the max values from the RSA COVID 19 data #Due to it being cumulative data Max should always be latest data
+RSA_VB_Cases<- RSA_covid %>%
+  group_by(date) %>%
+  summarize(Cases = sum(Cases), Recoveries = sum(Recoveries),Deaths = sum(Deaths),Active_Cases = sum(Active_Cases)) %>% slice(which.max(Cases)) %>% select(Cases,Deaths,Recoveries)  
+
+```
+
+```{r}
+#Putting Total cases into infographic 
+
+valueBox(RSA_VB_Cases$Cases, icon = "ion-thermometer")
+
+```
+
+
+
+### Recoverd 
+
+```{r}
+#Putting Total cases into infographic 
+
+valueBox(RSA_VB_Cases$Recoveries, icon = "ion-medkit", color = "green")
+
+```
+
+
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### South Africa Timeline 
+
+
+
+```{r include=FALSE}
+# Extracting the data from RSA COVID data and making a Time series for a plot
+# First Group by dates
+# Second get the totals for each day
+# Plot the totals by day 
+
+plotsa <- RSA_covid %>%
+  group_by(date) %>%
+  summarize(Cases = sum(Cases), Recoveries = sum(Recoveries),Deaths = sum(Deaths),Active_Cases = sum(Active_Cases)) %>% 
+  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="South Africa Timeline", x ="", y = "Confirmed Cases")
+
+Line_RSA<-ggplotly(plotsa)
+
+```
+
+```{r}
+Line_RSA
+```
+
+
+
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+### Male Deaths 
+
+```{r}
+## Info Graphic of Male Deaths
+
+valueBox(RSA_Gender$male, icon = "ion-male")
+```
+
+
+### Female Deaths 
+
+```{r}
+
+valueBox(RSA_Gender$female, icon = "ion-female", color = "pink")
+```
+
+### Deaths 
+
+```{r}
+#Putting Total Deaths into infographic 
+
+#ion-sad-outline
+
+valueBox(RSA_VB_Cases$Deaths, icon = "ion-heart-broken", color = "red")
+```
+
+
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### South Africa Deaths By Age
+
+```{r}
+
+### Creating Bar Chart of Deaths By Age For RSA
+
+plotage <- RSA_Age %>% ggplot(aes(x=Age, y=Deaths)) +
+  geom_bar(stat="identity", color="red") + ggtitle("South Africa Total Deaths per age group") +theme_bw()
+
+PlotAGE<- ggplotly(plotage)
+
+```
+
+
+```{r}
+PlotAGE
+```
+
+### Tests VS Positive Cases 
+
+```{r}
+
+time <- read_csv("Merged Data/RSA_Covid.csv")
+
+time$date<-as.Date(as.character(time$date),format="%d-%m-%Y")
+time$Active_Cases <- time$Cases - time$Deaths - time$Recoveries
+
+sa <- time %>%
+  group_by(date) %>%
+  summarize(Cases = sum(Cases), Recoveries = sum(Recoveries),Deaths = sum(Deaths),Active_Cases = sum(Active_Cases)) 
+
+#merge 2 data sets
+b <- read_csv("Data/Test_RSA.csv")
+b$date<-as.Date(as.character(b$date),format="%d-%m-%Y")
+merged <- sa %>% left_join(b, by = "date") 
+
+
+#get aggregate weeks
+sa2 <- merged %>% group_by(week = cut(date , "week")) %>% summarise(Cases = mean(Cases),min_date = min(date), max_date = max(date), tests = mean(cumulative_tests))
+
+
+# calculate increase in cases per week
+sa3 = sa2 %>%
+  arrange(week) %>%
+  mutate(
+         Positive_Cases = ceiling( Cases - lag(Cases)), Total_Tests = ceiling(tests - lag(tests)))
+
+
+# create x axis week date
+begin_date <- paste(as.character(day(sa3$min_date)) , as.character(month(sa3$min_date)),sep='/')
+end_date <- paste(as.character(day(sa3$max_date)) , as.character(month(sa3$max_date)),sep='/')
+sa3$week_date <- paste(begin_date,end_date,sep=" - ")
+
+sa3$week_date <- factor(sa3$week_date, levels = sa3$week_date[order(sa3$Cases)])
+
+sa4 <- sa3 %>% na.omit() 
+
+#plot both total tests and cases on the Y-axes
+plotsa4 <- sa4 %>% ggplot(aes(x=week_date)) +
+  geom_bar(aes(y=Total_Tests,colour="Total Tests"),stat="identity" , fill = "blue") + geom_bar(aes(y=Positive_Cases,colour = "Positive Cases"),stat="identity", fill = "red") + ggtitle("SA weekly total tests VS new confirmed positive cases") + labs(y= "Total New Confirmed Cases", x = "Week") + scale_colour_manual(values = c("Total Tests" = "blue", "Positive Cases"= "red")) + labs(y = "No of Cases",x = "Week",colour = "Legend") + theme_bw() + theme(axis.text.x = element_text(angle = 45)) 
+ggplotly(plotsa4)
+```
+
+
+# Provincial 
+
+
+```{r include= FALSE}
+RSA_Pop$Pop_Dev<- RSA_Pop$Population/100000
+
+```
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Provincial Summary 
+
+```{r}
+# written at start of the script 
+
+prov_sum1
+```
+
+
+```{r include=F}
+infect_Prov<-RSA_covid %>% group_by(Province) %>% slice(which.max(Cases)) %>% select(Province,Cases,Deaths,Recoveries) %>% arrange(Cases) 
+
+infect_Prov$Province<- factor(infect_Prov$Province, levels = infect_Prov$Province[order(infect_Prov$Cases)])
+
+```
+
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+### Bar Chart of Infections By Province 
+
+
+```{r}
+infect_Prov$Province <- factor(infect_Prov$Province, levels = infect_Prov$Province[order(infect_Prov$Cases)])
+
+bar_Cases <- infect_Prov %>% ggplot(aes(x=Province, y=Cases)) +
+  geom_bar(stat="identity", color="blue",fill="blue") + ggtitle("Provincial Total Confirmed Cases") + labs(y= "Total Cases", x = "Province") + theme_bw() + coord_flip() 
+bar_CasesP<- ggplotly(bar_Cases)
+
+```
+```{r}
+bar_CasesP
+```
+
+### Bar Chart of Recoveries By Province 
+
+```{r}
+infect_Prov$Province <- factor(infect_Prov$Province, levels = infect_Prov$Province[order(infect_Prov$Recoveries)])
+
+bar_Rec <- infect_Prov %>% na.omit() %>% ggplot(aes(x=Province, y=Recoveries)) +
+  geom_bar(stat="identity", color="green",fill="green") + ggtitle("Provincial Total Confirmed Recoveries") + labs(y= "Total Recoveries", x = "Province") + theme_bw() + coord_flip()
+bar_RecP<- ggplotly(bar_Rec)
+```
+```{r}
+bar_RecP
+```
+
+### Bar Chart of Deaths By Province 
+
+```{r}
+infect_Prov$Province <- factor(infect_Prov$Province, levels = infect_Prov$Province[order(infect_Prov$Deaths)])
+bar_Death <- infect_Prov %>% ggplot(aes(x=Province, y=Deaths)) +
+  geom_bar(stat="identity", color="red",fill="red") + ggtitle("Provincial Total Confirmed Deaths") + labs(y= "Total Deaths", x = "Province") + theme_bw() + coord_flip()
+bar_deatP<-ggplotly(bar_Death)
+```
+
+```{r}
+bar_deatP
+```
+
+
+Row 
+--------
+### Section
+```{r}
+valueBox("Eastern Cape ", color = "orange")
+```
+
+
+Row 
+--------
+
+### Eastern Cape Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="EC",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="Eastern Cape",4]),digits = 0),min = 0 , max= 100000)
+```
+
+### Eastern Cape Proportion of RSA's total Cases 
+
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="EC",2]),min = 0 , max=RSA_VB_Cases$Cases, gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### Eastern Cape Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="EC",3]),min = 0 , max=RSA_VB_Cases$Deaths, gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+```
+
+
+
+Column {data-width=350}
+--------
+###EC
+```{r include=FALSE}
+plotec <- RSA_covid %>% subset(Province == "EC") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="Eastern Cape Timeline", x ="", y = "")
+
+Line_EC<- ggplotly(plotec)
+```
+```{r}
+Line_EC
+```
+
+
+
+Row 
+--------
+### Section
+```{r}
+valueBox("Western Cape ", color = "orange")
+```
+
+Row 
+--------
+
+### Western Cape Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="WC",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="Western Cape",4]),digits = 0),min = 0 , max= 100000)
+```
+
+### Western Cape Proportion of RSA's total Cases 
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="WC",2]),min = 0 , max=RSA_VB_Cases$Cases,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### Western Cape Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="WC",3]),min = 0 , max=RSA_VB_Cases$Deaths,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+```
+
+Column {data-width=350}
+--------
+
+### WC
+```{r include=FALSE}
+plotwc <- RSA_covid %>% subset(Province == "WC") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="Western Cape Timeline", x ="", y = "")
+
+Line_WC<-ggplotly(plotwc)
+
+```
+```{r}
+Line_WC
+```
+
+Row 
+--------
+
+### Section
+```{r}
+valueBox("Free State  ", color = "orange")
+```
+
+Row
+-----
+
+
+### Free State Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="FS",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="Free State",4]),digits = 0),min = 0 , max= 100000)
+```
+
+
+### Free State Proportion of RSA's total Cases 
+
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="FS",2]),min = 0 , max=RSA_VB_Cases$Cases,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### Free State Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="FS",3]),min = 0 , max=RSA_VB_Cases$Deaths,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+      
+```
+
+
+Column {data-width=350}
+--------
+### Free State 
+
+```{r include=FALSE}
+plotfs <- RSA_covid %>% subset(Province == "FS") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="Free State Timeline", x ="", y = "")
+
+Line_FS<-ggplotly(plotfs)
+
+```
+```{r}
+Line_FS
+```
+
+
+Row 
+--------
+### Section
+```{r}
+valueBox("Gauteng  ", color = "orange")
+```
+
+Row
+-----
+
+
+### Gauteng Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="GP",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="Gauteng",4]),digits = 0),min = 0 , max= 100000)
+```
+
+### Gauteng Proportion of RSA's total Cases 
+
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="GP",2]),min = 0 , max=RSA_VB_Cases$Cases,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### Gauteng Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="GP",3]),min = 0 , max=RSA_VB_Cases$Deaths,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+      
+```
+
+
+
+
+Column {data-width=350}
+------
+
+### GP
+
+```{r include=FALSE}
+plotgp <- RSA_covid %>% subset(Province == "GP") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="Gauteng Timeline", x ="", y = "")
+
+Line_GP<-ggplotly(plotgp)
+
+```
+```{r}
+Line_GP
+```
+
+Row
+------
+
+### Section
+```{r}
+valueBox("KwaZulu Natal  ", color = "orange")
+```
+
+Row
+------
+
+### KwaZulu-Natal Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="KZN",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="KwaZulu-Natal",4]),digits = 0),min = 0 , max= 100000)
+```
+
+
+### KwaZulu Natal Proportion of RSA's total Cases 
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="KZN",2]),min = 0 , max=RSA_VB_Cases$Cases,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### KwaZulu Natal Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="KZN",3]),min = 0 , max=RSA_VB_Cases$Deaths,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+      
+```
+
+
+Column {data-width=350}
+------
+
+###KZN
+```{r include=FALSE}
+plotkzn <- RSA_covid %>% subset(Province == "KZN") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="KwaZulu Natal   Timeline", x ="", y = "")
+
+Line_KZN<-ggplotly(plotkzn)
+
+```
+```{r}
+Line_KZN
+```
+
+
+Row
+-------
+### Section
+
+```{r}
+valueBox("Limpopo  ", color = "orange")
+```
+
+Row
+-----
+
+### Limpopo Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="LP",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="Limpopo",4]),digits = 0),min = 0 , max= 100000)
+```
+
+
+### Limpopo Proportion of RSA's total Cases 
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="LP",2]),min = 0 , max=RSA_VB_Cases$Cases,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### Limpopo Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="LP",3]),min = 0 , max=RSA_VB_Cases$Deaths,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+      
+```
+
+
+
+
+
+Column {data-width=350}
+------
+
+### Limpopo
+```{r include=FALSE}
+plotlp <- RSA_covid %>% subset(Province == "LP") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="Limpopo  Timeline", x ="", y = "")
+
+Line_LP<-ggplotly(plotlp)
+
+```
+```{r}
+Line_LP
+```
+
+Row
+-------
+### Section
+
+```{r}
+valueBox("Mpumalanga  ", color = "orange")
+```
+
+Row
+-----
+
+### Mpumalanga Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="MP",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="Mpumalanga",4]),digits = 0),min = 0 , max= 100000)
+```
+
+### Mpumalanga Proportion of RSA's total Cases 
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="MP",2]),min = 0 , max=RSA_VB_Cases$Cases,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### Mpumalanga Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="MP",3]),min = 0 , max=RSA_VB_Cases$Deaths,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+      
+```
+
+
+
+
+Column {data-width=350}
+------
+### Mpumalanga
+```{r include=FALSE}
+plotmp <- RSA_covid %>% subset(Province == "MP") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="Mpumalanga Timeline", x ="", y = "")
+
+Line_MP<-ggplotly(plotmp)
+
+```
+```{r}
+Line_MP
+```
+
+
+Row
+-------
+### Section
+
+```{r}
+valueBox("Northern Cape  ", color = "orange")
+```
+
+Row
+-----
+
+### Northern Cape Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="NC",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="Northern Cape",4]),digits = 0),min = 0 , max= 100000)
+```
+
+### Northern Cape  Proportion of RSA's total Cases 
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="NC",2]),min = 0 , max=RSA_VB_Cases$Cases,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### Northern Cape  Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="NC",3]),min = 0 , max=RSA_VB_Cases$Deaths,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+      
+```
+
+
+Column {data-width=350}
+------
+### Northern Cape 
+
+```{r include=FALSE}
+plotnc <- RSA_covid %>% subset(Province == "NC") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="Northern Cape Timeline", x ="", y = "")
+
+Line_NC<-ggplotly(plotnc)
+
+```
+```{r}
+Line_NC
+```
+
+
+
+Row
+-------
+### Section
+
+```{r}
+valueBox("Northwest  ", color = "orange")
+```
+
+Row
+-----
+### Northwest Infections Per 100 000 People
+
+```{r}
+gauge(round(as.numeric(infect_Prov[infect_Prov$Province=="NW",2])/as.numeric(RSA_Pop[RSA_Pop$Province=="Northwest",4]),digits = 0),min = 0 , max= 100000)
+```
+
+
+### Northwest  Proportion of RSA's total Cases 
+
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="NW",2]),min = 0 , max=RSA_VB_Cases$Cases,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Cases*0.10),warning = c(RSA_VB_Cases$Cases*0.101,RSA_VB_Cases$Cases*0.3),danger = c(RSA_VB_Cases$Cases*0.301,RSA_VB_Cases$Cases)))
+```
+
+### North West  Proportion of RSA's total Deaths
+
+```{r}
+gauge(as.numeric(infect_Prov[infect_Prov$Province=="NW",3]),min = 0 , max=RSA_VB_Cases$Deaths,
+      gaugeSectors(success = c(0,RSA_VB_Cases$Deaths*0.10),warning = c(RSA_VB_Cases$Deaths*0.101,RSA_VB_Cases$Deaths*0.3),danger = c(RSA_VB_Cases$Deaths*0.301,RSA_VB_Cases$Deaths)))
+      
+```
+
+
+Column {data-width=350}
+------
+
+###North West
+```{r include=FALSE}
+plotnw <- RSA_covid %>% subset(Province == "NW") %>%  na.omit()  %>% ggplot(aes(x = date)) + geom_line(aes(y=Cases,color = "Confirmed Cases"),size=1) + geom_line(aes(y= Active_Cases,color = "Active Cases"),size=1) + geom_line(aes(y=Recoveries,color = "Recoveries"), size=1) + geom_line(aes(y=Deaths,color = "Deaths"), size=1)+ scale_x_date(breaks = as.Date(list)) + scale_colour_manual(name = "",values = c("Confirmed Cases" = "#0000FF", "Active Cases" = "#add8e6", "Recoveries" = "#00FF00", "Deaths" = "#FF0000" )) + theme_bw() + theme(axis.text.x = element_text(angle = 45)) + labs(title="North West Timeline", x ="", y = "")
+
+Line_NW<-ggplotly(plotnw)
+
+```
+```{r}
+Line_NW
+```
+
+
+
+
+

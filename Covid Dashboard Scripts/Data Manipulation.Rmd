@@ -1,0 +1,474 @@
+---
+title: "Data Manipulation"
+output: html_notebook
+---
+
+
+### Downloading Data From GitHub
+
+#### John Hopkins Global Data (CSV's)
+
+    John Hopkins Global Death Data
+    
+```{r }
+# Example code:
+deaths_global<-"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
+
+# Downloading file to specific file path
+download.file(url=deaths_global,destfile = "Data/deaths_global.csv")
+
+```
+
+    John Hopkins Global Confirmed Cases
+    
+```{r results="hide"}
+confirmed_global<-"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
+
+download.file(url=confirmed_global,destfile = "Data/confirmed_global.csv")
+
+```    
+
+    John Hopkins Global Recovered Cases
+    
+```{r results="hide"}
+recovered_global<-"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv"
+
+download.file(url=recovered_global,destfile = "Data/recovered_global.csv")
+
+```     
+
+#### South Africa Data (CSV's)
+
+    Confirmed Cases South Africa
+
+```{r results="hide"}
+confirmed_RSA<-"https://raw.githubusercontent.com/dsfsi/covid19za/master/data/covid19za_provincial_cumulative_timeline_confirmed.csv"
+
+download.file(url=confirmed_RSA,destfile = "Data/confirmed_RSA.csv")
+```
+
+    Death Cases South Africa
+
+```{r results="hide"}
+deaths_RSA<-"https://raw.githubusercontent.com/dsfsi/covid19za/master/data/covid19za_provincial_cumulative_timeline_deaths.csv"
+
+download.file(url=deaths_RSA,destfile = "Data/deaths_RSA.csv")
+```
+
+    Recoverd Cases South Africa
+
+```{r results="hide"}
+recovered_RSA<-"https://raw.githubusercontent.com/dsfsi/covid19za/master/data/covid19za_provincial_cumulative_timeline_recoveries.csv"
+
+download.file(url=recovered_RSA,destfile = "Data/recovered_RSA.csv")
+```
+
+    Cumulative Tests South Africa
+    
+```{r results="hide"}
+test_RSA<-"https://raw.githubusercontent.com/dsfsi/covid19za/master/data/covid19za_timeline_testing.csv"
+
+download.file(url=test_RSA,destfile = "Data/test_RSA.csv")
+```
+    
+    Western Cape Data
+
+```{r results="hide"}
+#wc_keys<-"https://raw.githubusercontent.com/dsfsi/covid19za/master/data/district_data/district_wc_keys.csv"
+
+#download.file(url=wc_keys,destfile = "Data/wc_keys.csv")
+
+
+wc_cumulative<-"https://raw.githubusercontent.com/dsfsi/covid19za/master/data/district_data/provincial_wc_cumulative.csv"
+
+download.file(url=wc_cumulative,destfile = "Data/wc_cumulative.csv")
+
+```
+
+
+    South Africa Population Data 
+    
+```{r results="hide"}
+
+## population won't change meaningfully thus it's at the bottom 
+#wc_keys<-"https://raw.githubusercontent.com/dsfsi/covid19za/master/data/district_data/district_wc_keys.csv"
+
+#download.file(url=wc_keys,destfile = "Data/wc_keys.csv")
+
+
+RSA_Pop<-"https://raw.githubusercontent.com/dsfsi/covid19za/master/data/district_data/za_province_pop.csv"
+
+download.file(url=RSA_Pop,destfile = "Data/RSA_Pop.csv")
+
+```
+
+
+## Scraping Table Data From NICD website
+### Creating the correct string which alters the NCID web link to obtain the most recent Covid-19 statistics
+```{r}
+library(rvest)
+library(tidyverse)
+library(dplyr)
+
+# get the day before current date, convert to correct format and concatenate with website link 
+# NCID most recent updates are the day previous to the current date
+# NCID stores date in format: "%e %B %Y" Example: https://www.nicd.ac.za/latest-confirmed-cases-of-covid-19-in-south-africa-14-june-2020/
+
+today <- Sys.Date() - 1
+today_1 <- format(today, format="%e %B %Y")
+yesterday <- gsub(" ", "-",today_1 )
+
+# NICD link before adding date
+string <- "https://www.nicd.ac.za/latest-confirmed-cases-of-covid-19-in-south-africa-"
+
+#### The first 9 days of the moth has a Zero at the start of the day
+#### The IF statement checks if the first character  of the string is a zero or not 
+# then removes the zero so that the link is in line with the websites naming convention 
+
+if (substr(yesterday , start = 1, stop = 1)== 0) {
+  yesterday2 <- substring(yesterday, 2)
+  result = paste(string,yesterday2,sep="") #Adding obtained date to url link
+  webpage <- read_html(result)
+}
+
+if (substr(yesterday , start = 1, stop = 1)!= 0) {
+  result = paste(string,yesterday,sep="")
+  result
+  webpage <- read_html(result)
+}  
+
+
+```
+### Extracting All the Table elements from NICD Page 
+```{r}
+tbls <- html_nodes(webpage, "table")
+```
+
+### Extracting the deaths per age group distribution Table 
+```{r}
+tblage <- webpage %>%
+        html_nodes("table") %>%
+        .[5] %>%  #[5] represents the fifth table(age-death data) extracted from NCID page
+        html_table(fill = TRUE)
+
+# Creating dataframe deaths per age group from extracted table
+tblage<- as.data.frame(tblage)
+names(tblage)<- tblage[1,]
+tblage<- tblage[-1,]
+
+tblage[,2]<- as.numeric(str_replace_all(tblage[,2], "[^[:alnum:]]", " "))
+tblage<- tblage[-3]
+tblage<- tblage[-11,]
+
+
+```
+### Writing obtained death-age distribution dataframe to CSV 
+
+```{r}
+#Write to folder containing all data
+write.csv(tblage,file = "Data/Deaths_Age_RSA.csv")
+```
+
+
+### Extracting Gender based Covid-19 Deaths Table 
+
+```{r}
+tblgender <- webpage %>%
+        html_nodes("table") %>%
+        .[4] %>%
+        html_table(fill = TRUE)
+
+# Creating dataframe gender based deaths from extracted table
+tblgender<- as.data.frame(tblgender)
+names(tblgender)<- tblgender[1,]
+tblgender<-tblgender[-1,]
+
+#Altering dataframe
+tblgender<- tblgender %>% 
+  separate(`Male (%)` , into = c("male", "male%")) %>% separate(`Female (%)` , into = c("female", "female%"))
+
+#str(tblgender)
+#head(tblgender)
+
+
+```
+### Writing total deaths per gender dataframe to CSV
+
+```{r}
+# Write to folder containing all data
+write.csv(tblgender,file = "Data/Deaths_gender_RSA.csv")
+```
+
+## Merging Datasets
+
+### Import CSV files
+
+```{r results="hide"}
+cases_rsa <- read_csv("Data/confirmed_RSA.csv")
+recoveries_rsa <- read_csv("Data/recovered_RSA.csv")
+deaths_rsa <- read_csv("Data/deaths_RSA.csv")
+```
+### Removing unwanted coloms
+
+```{r}
+cases_rsa<- cases_rsa[,-13:-14]
+recoveries_rsa<-recoveries_rsa[,-13:-14] 
+deaths_rsa <- deaths_rsa[,-13:-14]
+```
+
+### Convert from wide to long for 
+```{r}
+# Downloaded datasets are presented in wide format
+cases <- cases_rsa %>% pivot_longer(c(`EC`,`FS`,`GP`,`KZN`,`LP`,`MP`,`NC`,`NW`,`WC`,`UNKNOWN`), names_to = "Province", values_to = "Cases") 
+#head(cases)
+
+deaths <- deaths_rsa %>% pivot_longer(c(`EC`,`FS`,`GP`,`KZN`,`LP`,`MP`,`NC`,`NW`,`WC`,`UNKNOWN`), names_to = "Province", values_to = "Deaths")
+#head(deaths)
+
+recoveries <- recoveries_rsa %>% pivot_longer(c(`EC`,`FS`,`GP`,`KZN`,`LP`,`MP`,`NC`,`NW`,`WC`,`UNKNOWN`), names_to = "Province", values_to = "Recoveries") 
+#head(recoveries)
+
+```
+### Merge 3 datasets and remove duplicate colomns 
+```{r}
+merged <- cases %>% left_join(recoveries, by = c("date","Province")) %>% left_join(deaths, by = c("date","Province"))
+
+merged<- merged[,-5]
+merged<- merged[,-6]
+names(merged)[2]<- "YYYYMMDD"
+#head(merged)
+
+```
+### Save new dataset to new folder
+```{r}
+write_csv(merged, "Merged Data/RSA_Covid.csv")
+```
+
+
+## Provincial Western Cape Data Setup
+
+### Importing Data From CSV
+```{r}
+data<- read.csv("Data/wc_cumulative.csv")
+```
+### Checking Province Key code and saving them to a variable 
+```{r}
+datanames<-names(data)
+datanames[-1:-2]
+```
+
+### Transforming data from wide to long format using Province Key Code variable 
+
+```{r}
+new_data<- data %>% 
+  pivot_longer(datanames[-1:-2], names_to = "key", values_to = "Infected")
+```
+
+### Making the new Key colom a Factor and checking the levels syntax
+
+```{r}
+new_data$key<- as.factor(new_data$key)
+str(new_data)
+levels(new_data$key)
+```
+
+## Setting up the Descriptions Of the Key Values For later Geo-Coding 
+
+### Importing the descriptions of the keys from CSV
+
+```{r}
+map1<- read.csv("Data/wc_keys.csv")
+```
+### Adding Relevant location information to the Western Cape data
+```{r}
+map1$Country<- "South Africa"
+map1$Province <- "Western Cape"
+```
+
+### Making the Adress column for more accurate  Geo-Coding 
+```{r}
+map1<-map1 %>% 
+  unite(Adress, Country, Province, value, sep = ",", remove = FALSE)
+head(map1)
+```
+
+### Saving The new data to CSV for Geo-Coding 
+
+```{r}
+write.csv(map1,"Data/Keys_Adress.csv")
+```
+
+# Geo-Coding Towns In RSA. 
+
+Geo-Coding in R can be done in R with the ggmaps package however, it needs a Google Cloud Developers API Key.
+The same results can however be obtained in python without paying for the google services, Thus this section will be done in the *__Python3__*
+
+Only needed once Locations don't change 
+
+### Installing Needed Modules
+
+```{python results="hide",warning=FALSE}
+###!pip install geopandas
+###!pip install geopy
+
+```
+
+### Loading Modules 
+
+```{python results="hide",warning=FALSE}
+from geopy.geocoders import Nominatim
+import pandas as pd
+```
+### Setting up the connector 
+```{python results="hide",warning=FALSE}
+locator = Nominatim(user_agent='myGeocoder')
+```
+### Loading data 
+
+```{python results="hide",warning=FALSE}
+df = pd.read_csv('Data\\Keys_Adress.csv')
+```
+### Actually Geo-Coding The Adresses 
+
+```{Python }
+
+from geopy.extra.rate_limiter import RateLimiter
+
+# 1 -A function to delay between geocoding calls
+geocode = RateLimiter(locator.geocode, min_delay_seconds=1)
+# 2- - create location column ------------- >> Thhe string "Adress" column in the CSV
+df['location'] = df['Adress'].apply(geocode)
+# 3 - create longitude, laatitude and altitude from location column (returns tuple)
+df['point'] = df['location'].apply(lambda loc: tuple(loc.point) if loc else None)
+# 4 - split point column into latitude, longitude and altitude columns
+df[['latitude', 'longitude', 'altitude']] = pd.DataFrame(df['point'].tolist(), index=df.index)
+```
+### Saving Results to CSV
+
+ 
+```{python }
+df.to_csv(r'Data/Keys_Locations.csv',index=False)
+```
+
+### Importing the Province Key description data and checking data type
+```{r}
+Key_data<- read.csv("Data/Keys_Locations.csv")
+Key_data<- Key_data[,-1]
+str(Key_data)
+```
+
+### Changing The name of the Value colom to Town
+```{r}
+names(Key_data)[3]<- "Town"
+```
+
+### Converting Syntax of Key data set to match the main dataset
+
+```{r}
+Key_data[,1]<- str_replace_all(Key_data[,1], "[-]", ".")
+
+str(Key_data)
+
+Key_data$key<- as.factor(Key_data$key)
+
+levels(Key_data$key)
+```
+
+### Adding the Key coloms values by joining the two dataframes
+
+```{r}
+new_data2 <- new_data %>%
+  left_join(Key_data,copy = T)
+
+str(new_data2)
+head(new_data2)
+```
+
+### Saving The Data
+```{r}
+write.csv(new_data2,file = "Merged Data/Provincial_wc.csv")
+```
+
+## Testing Data For RSA
+
+### Import CSV from data folder 
+```{r}
+Test_RSA<- read.csv("Data/test_RSA.csv")
+```
+
+### Selecting only the coloms with data of interest 
+
+```{r}
+Test_RSA<- Test_RSA[,1:3]
+```
+
+### Saving The Data to CSV
+
+```{r}
+write.csv(Test_RSA,file = "Merged Data/Test_RSA.csv")
+```
+
+## Global Data 
+### Importing global data from CSV's
+```{r results="hide"}
+Global_Cases<- read_csv("Data/confirmed_global.csv")
+Global_Deaths<- read_csv("Data/deaths_global.csv")
+Global_Recoverd<- read_csv("Data/recovered_global.csv")
+```
+
+```{r}
+Global_case_names<-names(Global_Cases[,-1:-4])
+Global_Deaths_names<-names(Global_Deaths[,-1:-4])
+Global_Recoverd_names<- names(Global_Recoverd[,-1:-4])
+```
+
+```{r}
+
+Global_Cases_1 <- Global_Cases %>% pivot_longer(Global_case_names, names_to = "Date", values_to = "Cases") 
+
+
+Global_Deaths_1 <- Global_Deaths %>% pivot_longer(Global_Deaths_names, names_to = "Date", values_to = "Deaths")
+
+
+Global_Recoverd_1 <- Global_Recoverd %>% pivot_longer(Global_Recoverd_names, names_to = "Date", values_to = "Recoveries") 
+```
+
+### Merging the three data sets into one and removing duplicate columns 
+
+```{r}
+Global_merged <- Global_Cases_1 %>% left_join(Global_Recoverd_1, by = c("Date","Country/Region")) %>% left_join(Global_Deaths_1, by = c("Date","Country/Region"))
+
+Global_merged<- Global_merged[,c(-1,-3:-4,-7:-9)]
+```
+
+### Saving CSV (Might take some time )
+
+```{r}
+
+write.csv(Global_merged,"Merged Data/Global_Data.csv")
+```
+
+### Creating Global Dataset with only the latest values to reduce overheads later 
+
+Selecting only the newest available data of each country to save resources when plotting data 
+
+```{r}
+
+Global_Max_Country <-Global_merged %>% group_by(`Country/Region`) %>% slice(which.max(c(Cases,Deaths,Recoveries))) %>% select(`Country/Region`,Cases,Deaths,Recoveries,Lat,Long) %>% arrange(Cases) %>% drop_na()
+
+write.csv(Global_Max_Country,"Merged Data/Global_Max_Country.csv")
+```
+
+### Adding Headers to the RSA_Pop Data set
+
+```{r}
+RSA_Pop<- read.csv(file = "Data/RSA_Pop.csv", header = F)
+
+names(RSA_Pop)<- c("Province","Population")
+```
+
+### Saving Data
+
+```{r}
+write.csv(RSA_Pop,file = "Merged Data/RSA_PopH.csv")
+```
