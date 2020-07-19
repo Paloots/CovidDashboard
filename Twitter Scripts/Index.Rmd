@@ -1,0 +1,169 @@
+---
+title: "Covid-19 Twitter Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    navbar:
+      - { align: left, icon: "ion-social-twitter-outline", href: " " }
+      - { title: " Post Frequancy", href: "Index.html", align: left, icon: "ion-arrow-graph-up-right" }
+      - { title: "Topic Models", href: "Topic-Models.html", align: left, icon: "ion-android-hangout" }
+      - { title: "Word Network", href: "Word-Network.html", align: left, icon: "ion-android-share-alt" }
+      - { title: "Sentiment", href: "Sentiment.html", align: left, icon: "ion-android-star-half" }
+    storyboard: true
+  
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(textdata)
+library(tidytext)
+library(rtweet)
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(stringr)
+library(sqldf)
+library(topicmodels)
+```
+
+
+```{r, include=FALSE}
+
+dat<- read_csv(file = "Data/Tweet_dates.csv")
+```
+
+
+
+### Pie Chart of all tweets about COVID-19 
+
+```{r}
+### Creating colour palet
+mycols <- c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF","#99D8A4")
+
+# Table of roportions 
+pie_dat<-as.data.frame(table(dat$screen_name))
+pie_dat$Prop<-round(pie_dat$Freq/sum(pie_dat$Freq),digits = 2)
+
+
+pie_dat <- pie_dat %>%
+  arrange(desc(Var1)) %>%
+  mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
+
+
+Pie_Plot<-pie_dat %>% ggplot(aes(x=2 ,y=Prop, fill=Var1))+ geom_bar(width = 1,stat = "identity")+coord_polar("y", start = 0)+ geom_text(aes(y = lab.ypos, label = Prop), color = "white") +theme_void()+xlim(0.5, 2.5)+ scale_fill_manual("Twitter handels",values = mycols)+ ggtitle("Propotion of tweets about COVID-19") 
+
+Pie_Plot
+
+```
+
+
+***** 
+
+#### Background 
+
+The data was collected from Twitter's API using the "rtweet" package in R. A total of 16 000 tweets was collected, 3200 tweets from each of the 5 source. The tweets was the filtered based on their content. Tweets that related to Covid-19 or lockdown was included in the final data set. After filtering, 3700 tweets remained. 
+
+Source: https://rtweet.info/
+
+
+#### Descriptions
+Looking at the pie chart one can see that media houses Tweeted significantly more about Covid-19 than the Government. 
+With SABC and News24 posting the most about Covid-19 and the lockdown.
+
+### Histogram of Tweets 
+
+
+```{r}
+
+
+dat$created_at<-as.Date(dat$created_at,format="%d-%b-%y") 
+
+# Plot data
+## Selecting and counting the  posts per day by each twitter handel
+P_data<-sqldf("SELECT created_at  ,  COUNT(*) as Freq  ,screen_name as Twitter_Handle
+      FROM dat
+       GROUP BY created_at, screen_name ")
+
+
+mycols <- c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF","#99D8A4")
+
+
+Hist_Time_Twwets<- ggplot(P_data, aes(x=created_at,y=Freq,fill=Twitter_Handle)) + geom_bar(stat="identity") +ylab("Frequency") + xlab(" ") + theme_bw()+ scale_fill_manual("Twitter handels",values = mycols)+ ggtitle("Tweet frequency per day about Covid 19") 
+       
+
+#Hist_Time_Twwets
+ggplotly(Hist_Time_Twwets)
+```
+
+*****
+
+#### Background 
+
+The South African President announced a reduction in the country's alert level from level 4 to level 3 on Sunday the 24th of May. The following week the Ministers had the task of explaining how that would affect their given sectors that they are in charge of. The new alert status was to take affect the 1st of June.  
+
+Schools where also set to re-open on the 10th of June for Grade 7 and 12 Learners.
+
+
+#### Descriptions
+Looking at the histogram we can see activity from all the news agencies during this time period, however there is a reduction in Tweets by the Government from the 2nd of June, one day after South Africa went from lockdown alert level 4 to level 3.   
+
+
+#### Disclaimer 
+
+The amount of posts made on a daily basis by News24 meant that we could only gather Tweets as far back as the 27th of May from them and thereby explaining why they have zero activity before then. The decision was made to include more days in order to gain a better understanding of the trends from the other Twitter sources.  
+
+
+
+### Timeline of tweets 
+
+```{r}
+
+# Plot timeline of tweets
+Tweet_Line <- dat %>%
+  dplyr::group_by(screen_name) %>%
+  ts_plot("days", trim = 1L) +
+  ggplot2::geom_point() +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(
+    legend.title = ggplot2::element_blank(),
+    legend.position = "bottom",
+    plot.title = ggplot2::element_text(face = "bold")) +
+  ggplot2::labs(
+    x = NULL, y = NULL,
+    title = "Frequency of Twitter statuses posted by news organization",
+    subtitle = "Twitter status (tweet) counts aggregated by day from 20 May 2020",
+    caption = "\nSource: Data collected from Twitter's REST API via rtweet"
+  )
+
+ 
+ 
+ ggplotly(Tweet_Line)
+```
+
+
+
+*****
+#### Background 
+
+The South African President announced a reduction in the country's alert level from level 4 to level 3 on Sunday the 24th of May. The following week the Ministers had the task of explaining how that would affect their given sectors that they are in charge of. The new alert status was to take affect the 1st of June.  
+
+Schools where also set to re-open on the 10th of June for Grade 7 and 12 Learners.
+
+
+#### Descriptions
+Looking at the histogram we can see activity from all the news agencies during this time period, however there is a reduction in Tweets by the Government from the 2nd of June, one day after South Africa went from lockdown alert level 4 to level 3.   
+
+
+#### Disclaimer 
+
+The amount of posts made on a daily basis by News24 meant that we could only gather Tweets as far back as the 27th of May from them and thereby explaining why they have zero activity before then. The decision was made to include more days in order to gain a better understanding of the trends from the other Twitter sources.   
+
+
+
+
+
+
+
+
+
+
+

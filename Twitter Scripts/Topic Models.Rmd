@@ -1,0 +1,668 @@
+---
+title: "Covid-19 Twitter Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    navbar:
+      - { align: left, icon: "ion-social-twitter-outline", href: " " }
+      - { title: " Post Frequancy", href: "Index.html", align: left, icon: "ion-arrow-graph-up-right" }
+      - { title: "Topic Models", href: "Topic-Models.html", align: left, icon: "ion-android-hangout" }
+      - { title: "Word Network", href: "Word-Network.html", align: left, icon: "ion-android-share-alt" }
+      - { title: "Sentiment", href: "Sentiment.html", align: left, icon: "ion-android-star-half" }
+    storyboard: true
+  
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(textdata)
+library(tidytext)
+library(rtweet)
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(stringr)
+library(sqldf)
+library(topicmodels)
+library(tm)
+library(ldatuning)
+library(digest)
+```
+
+
+
+```{r}
+tweet_data <- read_csv(file = "Data/Tidytweets.csv")
+```
+
+
+```{r}
+
+# Stop Words For topic model 
+data("stop_words")
+
+other_stop_words1 <- tibble( #constructing new dataframe
+  word = c(
+    "covid",
+    "lockdown",
+    "by0kbr5hqv",
+    "0001f642",
+    "e5wqc2m8va",
+    "coronavirus",
+    "dstv403",
+    "enca",
+    "gkhn5smo6b",
+    "covid19",
+    "sa",
+    "south",
+    "africa",
+    "pandemic",
+    "news24",
+    "gerbjan",
+    "ntwaagea",
+    "murrayrsa",
+    "bisouthafrica",
+    "srswp4h5hm",
+    "sabcnewsfeatures",
+    "sabcnuus",
+    "sabckzn",
+    "lotusfm",
+    "salpatel786"
+    #"ramaphosa"
+  ),
+  lexicon = "twitter"
+)
+
+all_stop_words1 <- stop_words %>%
+  bind_rows(other_stop_words1) # here we are connecting two data frames
+
+
+    tweet_data1 <- tweet_data  %>%
+      anti_join(all_stop_words1)
+
+```
+
+
+
+```{r message=F}
+# Stop Words for Frequency Plots
+data("stop_words")
+
+other_stop_words2 <- tibble( #constructing new dataframe
+  word = c(
+    #"covid",
+    #"lockdown",
+    "by0kbr5hqv",
+    "0001f642",
+    "e5wqc2m8va",
+    #"coronavirus",
+    "dstv403",
+    #"enca",
+    "gkhn5smo6b",
+    #"sa",
+    #"south",
+    #"africa",
+    #"pandemic",
+    #"ramaphosa",
+    "https",
+    "t.co",
+   # "news24",
+    #"sabcnews",
+    "hot",
+    "press",
+    "salpatel786",
+    "2020",
+    #"day59oflockdown",
+    "breaking",
+    "0001f525",
+    "270a",
+   "u8ziuyzjpg",
+   "itchybyte",
+   "ntwaagae",
+   "dnnu3zijyl",
+   "srswp4h5hm"
+    
+  ),
+  lexicon = "twitter"
+)
+
+
+all_stop_words2 <- stop_words %>%
+  bind_rows(other_stop_words2)
+
+ tweet_data2 <- tweet_data  %>%
+      anti_join(all_stop_words2)
+
+```
+
+### Word Frequency
+
+```{r}
+Tweet_WF <- tweet_data2 %>%
+  count(word) %>%
+    arrange(desc(n))
+
+
+# remove whitespace (just for in case)
+Tweet_WF$word <- gsub("\\s+","",Tweet_WF$word)
+
+# if we want to use stemming
+#library(SnowballC)
+#  tidy_twt<-tidy_twt %>%
+#      mutate_at("word", funs(wordStem((.), language="en")))
+
+#save to csv
+#write_as_csv(tidy_twt, "../Data/Tidytweets.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
+
+# plot top 15 words and occurrences
+Freq_Plot_All<-Tweet_WF %>%
+  slice(1:20) %>%
+    ggplot(aes(x=reorder(word, -n), y=n, fill=word))+
+      geom_bar(stat="identity")+
+        theme_minimal()+
+        theme(axis.text.x = 
+            element_text(angle = 60, hjust = 1, size=13))+
+        theme(plot.title = 
+            element_text(hjust = 0.5, size=18))+
+          ylab("Frequency")+
+          xlab("")+
+          ggtitle("Most Frequent Words Used")+
+          guides(fill=FALSE)
+
+ggplotly(style( Freq_Plot_All,showlegend = F))
+```
+
+****
+
+#### Method 
+
+This Plot looks only at the most frequent words use over the entire corpus of tweets 
+
+
+### Word Frequency Per Media House  
+
+```{r}
+## tf-idf word frequency plot
+tweet_words <- tweet_data2 %>%
+  count(screen_name, word, sort = TRUE)
+
+total_words <- tweet_words %>% 
+  group_by(screen_name) %>% 
+  summarize(total = sum(n))
+
+tweet_words <- left_join(tweet_words, total_words)
+
+
+tweet_words <- tweet_words %>%
+  bind_tf_idf(word, screen_name, n)
+
+
+
+
+tweet_words %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>% 
+  group_by(screen_name) %>% 
+  top_n(10) %>% 
+  ungroup() %>%
+  ggplot(aes(word, tf_idf, fill = screen_name)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~screen_name, ncol = 3, scales = "free") +
+  coord_flip() +theme(axis.text.x = element_text(angle = 45))
+```
+
+**** 
+
+#### Method 
+
+This Plot looks only at the most frequent words use over the entire corpus of tweets and grouped by Twitter handle  
+
+#### Description  
+
+From the word frequency one can see that the Government focuses on supportive words. Some of the news agencies use words related to themselves the most, however, there are still some words like "wc", "level3lockdown" and "test" that might give us more insight into what topics are discussed. In the next section we will group the words into bi-grams to help build more context for what topics could be present.        
+
+
+### Bi-Gram Frequency
+
+```{r}
+#Splitting text into Bi-Grams 
+dat<- read_csv("Data/Tweet_dates.csv")
+
+Tweet_Bi_Grams<- dat %>% select(c(screen_name,text)) %>% unnest_tokens(bigram,text,token = "ngrams",n=2)
+
+
+Tweet_Bi_Grams_Sep<- Tweet_Bi_Grams %>%   separate(bigram, c("word1", "word2"), sep = " ")
+
+```
+
+
+```{r}
+# Filtering 
+bigrams_filtered <- Tweet_Bi_Grams_Sep %>%
+  filter(!word1 %in% all_stop_words2$word) %>%
+  filter(!word2 %in% all_stop_words2$word) 
+
+# Count 
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+```
+
+```{r}
+# uniting words
+bigrams_united <- bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+```
+
+```{r}
+# create tf_id 
+bigram_tf_idf <- bigrams_united %>%
+  count(screen_name, bigram) %>%
+  bind_tf_idf(bigram, screen_name, n) %>%
+  arrange(desc(tf_idf))
+```
+
+```{r}
+##Plot TF IDF
+bigram_tf_idf %>%
+    arrange(desc(tf_idf)) %>%
+  mutate(bigram = factor(bigram, levels = rev(unique(bigram)))) %>% 
+  group_by(screen_name) %>%
+  top_n(5) %>% 
+  ungroup() %>%
+  ggplot(aes(bigram, tf_idf, fill = screen_name)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~screen_name, ncol = 2, scales = "free") +
+  coord_flip()
+```
+
+**** 
+#### Method 
+
+The words are grouped by their adjacent words forming two word groups and then these groups gets counted. 
+
+#### Description
+
+Looking at the word frequency one can be ascertain that News24 frequently reported on the testing backlog, eNCA reported about the lockdown and briefings and EWN reported on foreign nationals, while the Government posted more on supportive measures.     
+
+### Optimal K For Topic Model 
+```{r}
+#Seting Up Matrix
+
+tidy_DTM<-
+  tweet_data1 %>%
+  count(created_at, word) %>%
+  cast_dtm(created_at, word, n)
+
+#inspect(tidy_DTM[1:5,3:8])
+```
+
+```{r message= FALSE, include=FALSE}
+
+result <- FindTopicsNumber(
+  tidy_DTM,
+  topics = seq(from = 1, to = 25, by = 1),
+  metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014"),
+  method = "Gibbs",
+  control = list(seed = 77),
+  mc.cores = 4L,
+  verbose = TRUE
+)
+
+```
+
+```{r}
+FindTopicsNumber_plot(result)
+```
+
+***** 
+
+#### Method 
+Through the use of the "ldatuning" package, it realizes 4 metrics: "Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014" to select the perfect number of topics for a LDA model. The total number of CPU cores can be indicated for optimal performance when executing this method. The larger the dataset, the longer it takes to calculate the results. For more information on this method and the various metrics to obtain the optimal K topics, visit: https://cran.r-project.org/web/packages/ldatuning/vignettes/topics.html or https://eight2late.wordpress.com/2015/09/29/a-gentle-introduction-to-topic-modeling-using-r/
+
+
+#### Description
+While looking at the results of this plot, there can be seen that metrics "Griffiths2004", "Arun2010", "Deveaud2014" are not informative for this specific LDA dataset. To find the optimal "K" amount of topics, one needs to look for an "elbow" (a situation where the plot changes abruptly). Thus the optimal amount of topics within the tweet dataset according to the "CaoJuan2009" metric lies between 4 and 10.
+
+#### References 
+
+1. Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the natural number of topics with latent dirichlet allocation: Some observations. In Advances in knowledge discovery and data mining, Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi (eds.). Springer Berlin Heidelberg, 391–402. http://doi.org/10.1007/978-3-642-13657-3_43
+
+2. Cao Juan, Xia Tian, Li Jintao, Zhang Yongdong, and Tang Sheng. 2009. A density-based method for adaptive lda model selection. Neurocomputing — 16th European Symposium on Artificial Neural Networks 2008 72, 7–9: 1775–1781. http://doi.org/10.1016/j.neucom.2008.06.011
+
+3. Romain Deveaud, Éric SanJuan, and Patrice Bellot. 2014. Accurate and effective latent concept modeling for ad hoc information retrieval. Document numérique 17, 1: 61–84. http://doi.org/10.3166/dn.17.1.61-84
+
+4. Thomas L. Griffiths and Mark Steyvers. 2004. Finding scientific topics. Proceedings of the National Academy of Sciences 101, suppl 1: 5228–5235. http://doi.org/10.1073/pnas.0307752101
+
+5. Martin Ponweiser. 2012. Latent dirichlet allocation in r. Retrieved from http://epub.wu.ac.at/id/eprint/3558
+
+
+
+
+### Topic Model For All Tweets 
+
+```{r message=FALSE}
+
+##  Selecting optimal K 
+tweet_topicmodel<-LDA(tidy_DTM, k=8, control = list(seed = 321))
+
+tweet_topics <- tidy(tweet_topicmodel, matrix = "beta")
+
+tweet_top_terms <- 
+  tweet_topics %>%
+  group_by(topic) %>%
+  top_n(6, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+
+tweet_top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() + theme(axis.text.x = element_text(angle = 45))
+
+```
+
+
+
+
+*****
+#### Method 
+
+This topic model was built using LDA ("Latent Dirichlet Allocation") with a K parameter of 8 based on the method used for identifying the optimal K value. This model was used with a "beta" matrix in order to examine per-topic-per-word probabilities.
+
+#### Description
+Looking at the topic model for all the tweets one can identify the following eight tweets during the time period 19 May to 18 June 2020: 
+   
+-  Statistics on Covid 19 
+-  The Ministers briefings
+-  Lifted Restriction on flights 
+-  Hospitals 
+-  The Presidents and Level 3 lockdown
+-  Schools and dducation in Western Cape
+-  Lifted restriction on Alcohol sales
+-  Court case surrounding regulations 
+
+
+### Topic Model for  Media 24
+
+
+```{r}
+#Seting Up Matrix
+
+tidy_DTM_mews24<-
+  tweet_data1 %>% filter(screen_name == "News24") %>% 
+  count(created_at , word) %>%
+  cast_dtm(created_at , word, n)
+
+#inspect(tidy_DTM[1:5,3:8])
+```
+
+
+
+```{r}
+
+## Selecting K  
+
+tweet_topicmodel_news24<-LDA(tidy_DTM_mews24, k=4, control = list(seed = 321))
+
+tweet_topics_News24 <- tidy(tweet_topicmodel_news24, matrix = "beta")
+#tweet_topics
+
+tweet_top_terms_News24 <- 
+  tweet_topics_News24 %>%
+  group_by(topic) %>%
+  top_n(6, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+
+tweet_top_terms_News24 %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() + theme(axis.text.x = element_text(angle = 45))
+```
+
+*****
+#### Method 
+
+This topic model was built using LDA ("Latent Dirichlet Allocation") with a K parameter of 4. This model uses  a "beta" matrix in order to examine per-topic-per-word probabilities.
+
+#### Description
+
+Looking at Media24's Topic Model one can identify the following 4 topic areas during the period of 19 May to 18 June 2020:
+
+-  Reports on the Western Cape 
+-  The Situation surrounding schools
+-  The President's live speeches
+-  Reports on Covid-19 statistics
+
+
+
+
+### Topic Model For EWNupdates
+```{r}
+#Seting Up Matrix
+
+tidy_DTM_ewn<-
+  tweet_data1 %>% filter(screen_name == "ewnupdates") %>% 
+  count(created_at , word) %>%
+  cast_dtm(created_at , word, n)
+
+#inspect(tidy_DTM[1:5,3:8])
+```
+
+
+
+```{r}
+
+## Selecting K  
+tweet_topicmodel_ewn<-LDA(tidy_DTM_ewn, k=4, control = list(seed = 321))
+
+tweet_topics_ewn <- tidy(tweet_topicmodel_ewn, matrix = "beta")
+#tweet_topics
+
+tweet_top_terms_ewn <- 
+  tweet_topics_ewn %>%
+  group_by(topic) %>%
+  top_n(7, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+
+tweet_top_terms_ewn %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() + theme(axis.text.x = element_text(angle = 45))
+```
+
+*****
+#### Method 
+
+This topic model was built using LDA ("Latent Dirichlet Allocation") with a K parameter of 4. This model  uses a "beta" matrix in order to examine per-topic-per-word probabilities.
+
+#### Description
+
+Looking at EWNupdates's Topic Model one can identify the following 4 topic areas during the period of 19 May to 18 June 2020:
+
+- Information surrounding deaths 
+- Minister's Live briefings 
+- Reports on Western Cape's situation 
+- Promotion of one of their tv-shows 
+
+
+
+### Topic Model for eNCA
+
+
+```{r}
+#Seting Up Matrix
+
+tidy_DTM_eNCA<-
+  tweet_data1 %>% filter(screen_name == "eNCA") %>% 
+  count(created_at , word) %>%
+  cast_dtm(created_at , word, n)
+
+#inspect(tidy_DTM[1:5,3:8])
+```
+
+
+
+```{r}
+
+## Selecting K  
+tweet_topicmodel_eNCA<-LDA(tidy_DTM_eNCA, k=4, control = list(seed = 321))
+
+tweet_topics_eNCA <- tidy(tweet_topicmodel_eNCA, matrix = "beta")
+#tweet_topics
+
+tweet_top_terms_eNCA <- 
+  tweet_topics_eNCA %>%
+  group_by(topic) %>%
+  top_n(6, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+tweet_top_terms_eNCA %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() + theme(axis.text.x = element_text(angle = 45))
+```
+
+*****
+#### Method 
+
+This topic model was built using LDA ("Latent Dirichlet Allocation") with a K parameter of 4. This model  uses a "beta" matrix in order to examine per-topic-per-word probabilities..
+
+#### Description
+
+Looking at ENCA Topic Model one can identify the following 4 topic areas during the period of 19 May to 18 June 2020:
+
+- Ministers and President's Live briefings 
+- Lockdown level 3 regulations  
+- Reports on Western Cape's schools 
+- Court proceedings about lockdown regulations   
+
+
+### Topic Model For SABC News
+
+
+```{r}
+#Seting Up Matrix
+
+tidy_DTM_sabc<-
+  tweet_data1 %>% filter(screen_name == "SABCNews") %>% 
+  count(created_at , word) %>%
+  cast_dtm(created_at , word, n)
+
+#inspect(tidy_DTM[1:5,3:8])
+```
+
+
+
+```{r}
+## Selecting K  
+tweet_topicmodel_sabc<-LDA(tidy_DTM_sabc, k=6, control = list(seed = 321))
+
+tweet_topics_sabc <- tidy(tweet_topicmodel_sabc, matrix = "beta")
+#tweet_topics
+
+tweet_top_terms_sabc <- 
+  tweet_topics_sabc %>%
+  group_by(topic) %>%
+  top_n(8, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+
+tweet_top_terms_sabc %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() + theme(axis.text.x = element_text(angle = 45))
+```
+
+*****
+#### Method 
+
+This topic model was built using LDA ("Latent Dirichlet Allocation") with a K parameter of 6. SABC News had the most overall Tweets and a topic model with the only to have 6 topics as the other media houses yielded mixed results. This model uses a "beta" matrix in order to examine per-topic-per-word probabilities.
+
+#### Description
+
+
+Looking at SABC News Topic Model one can identify the following 6 topic areas during the period of 19 May to 18 June 2020:
+
+- Statistics on the Nation's situation 
+- Statistics on Western Cape's situation
+- Court proceedings about lockdown regulations 
+- Reports on schools 
+- World health and South Africans return to work
+- Live briefings on regulations
+
+
+### Topic Model for GovernmenrZA
+
+```{r}
+#Seting Up Matrix
+
+tidy_DTM_gov<-
+  tweet_data1 %>% filter(screen_name == "GovernmentZA") %>% 
+  count(created_at , word) %>%
+  cast_dtm(created_at , word, n)
+
+#inspect(tidy_DTM[1:5,3:8])
+```
+
+
+
+```{r}
+## Selecting K  
+tweet_topicmodel_gov<-LDA(tidy_DTM_gov, k=4, control = list(seed = 321))
+
+tweet_topics_gov <- tidy(tweet_topicmodel_gov, matrix = "beta")
+
+tweet_top_terms_gov <- 
+  tweet_topics_gov %>%
+  group_by(topic) %>%
+  top_n(7, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+
+tweet_top_terms_gov %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() + theme(axis.text.x = element_text(angle = 45))
+```
+
+*****
+#### Method 
+
+This topic model was built using LDA ("Latent Dirichlet Allocation") with a K parameter of 4. This model  uses a "beta" matrix in order to examine per-topic-per-word probabilities.
+
+#### Description
+
+Looking at GovernmentZA's  Topic Model one can identify the following 3 topic areas during the period of 19 May to 18 June 2020:
+
+- Support Services 
+- Ministers and President's Live briefings
+- Spread of virus due to gatherings 
+  
+Topic number 3 is still somewhat ambiguous 
+
+
+
+
+

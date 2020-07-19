@@ -1,0 +1,116 @@
+---
+title: "Data download and manipulation"
+output: html_notebook
+---
+
+```{r}
+library(textdata)
+library(tidytext)
+library(rtweet)
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+```
+
+## TWITTER TWEETS DOWNLOAD
+```{r}
+## Before any tweets can be gathered, the "rtweet" package needs to be installed and loaded.
+
+## run the following line only once to get maximum tweets from various twitter handles
+tmls <- get_timelines(c("ewnupdates", "eNCA", "SABCNews","GovernmentZA","News24"), n = 3200)
+
+## Save all gathered tweets dataset to external CSV and specific the file encoding.
+write_as_csv(tmls, "TestTweet.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
+
+
+## filter dataset for tweets containing specific words regarding Covid-19
+covid_tweets <- dplyr::filter(tmls, grepl('coronavirus|Covid-19|corona virus|Lockdown|lockdown|pandemic|Pandemic|COVID-19', text))
+
+## filter for tweets posted after specific date
+covid_tweets <- covid_tweets %>% dplyr::filter(created_at > "2020-05-19")
+
+## convert all words to lowercase
+tmls$text<- tolower(as.character(tmls$text))
+
+## save filtered tweets dataset to Data directory
+write_as_csv(test, "Data/TestTweet2.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
+```
+
+## TWITTER DATA CLEANUP
+## Making the text "Tidy" using tidytext methods
+```{r}
+
+head(view(twt))
+## extracting all words
+tidy_twt <- twt %>%
+    select(created_at,text,screen_name) %>%
+    unnest_tokens("word", text)
+tidy_twt
+
+## count top words
+tidy_twt %>%
+  count(word) %>%
+    arrange(desc(n))
+
+## remove stopwords
+data("stop_words")
+    tidy_twt<-tidy_twt %>%
+      anti_join(stop_words)
+    
+## with stopwords removed
+tidy_twt %>%
+  count(word) %>%
+    arrange(desc(n))
+
+
+## create custom vector of stopwords
+other_stop_words <- tibble( #constructing new dataframe
+  word = c(
+    "https",
+    "t.co",
+    "by0kbr5hqv",
+    "0001f642",
+    "amp",
+    "sabcnews"
+  ),
+  lexicon = "twitter"
+)
+
+## Connect stopwords with 'other_stop_words'
+all_stop_words <- stop_words %>%
+  bind_rows(other_stop_words) # here we are connecting two data frames
+
+
+## remove ALL stopwords
+data("all_stop_words")
+    tidy_twt<-tidy_twt %>%
+      anti_join(all_stop_words)
+    
+## with custom stopwords removed
+tidy_twt %>%
+  count(word) %>%
+    arrange(desc(n))
+
+## remove numbers
+tidy_twt<-tidy_twt[-grep("\\b\\d+\\b", tidy_twt$word),]
+
+
+## with numbers removed
+tidy_twt <- tidy_twt %>%
+  count(word) %>%
+    arrange(desc(n))
+
+
+## remove whitespace removed(just for in case)
+tidy_twt$word <- gsub("\\s+","",tidy_twt$word)
+
+# to use stemming
+#library(SnowballC)
+#  tidy_twt<-tidy_twt %>%
+#      mutate_at("word", funs(wordStem((.), language="en")))
+
+## save to clean dataset to csv
+write_as_csv(tidy_twt, "../Data/Tidytweets.csv", prepend_ids = TRUE, na = "", fileEncoding = "UTF-8")
+
+```
+

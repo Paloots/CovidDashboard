@@ -1,0 +1,393 @@
+---
+title: "Covid-19 Twitter Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    navbar:
+      - { align: left, icon: "ion-social-twitter-outline", href: " " }
+      - { title: " Post Frequancy", href: "Index.html", align: left, icon: "ion-arrow-graph-up-right" }
+      - { title: "Topic Models", href: "Topic-Models.html", align: left, icon: "ion-android-hangout" }
+      - { title: "Word Network", href: "Word-Network.html", align: left, icon: "ion-android-share-alt" }
+      - { title: "Sentiment", href: "Sentiment.html", align: left, icon: "ion-android-star-half" }
+    storyboard: true
+  
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(textdata)
+library(tidytext)
+library(rtweet)
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(stringr)
+library(sqldf)
+library(topicmodels)
+library(scales)
+library(tidyr)
+library(ggrepel)
+library(reshape2)
+library(wordcloud)
+library(tm)
+```
+
+```{r, include=FALSE}
+#import data
+tweet_data <- read_csv(file = "Data/Tidytweets.csv")
+
+
+## Format date 
+tweet_data$date<-as.Date(tweet_data$created_at, 
+                                          format="%Y-%m-%d %x")
+
+#add more stopwords to remove
+data("stop_words")
+
+other_stop_words <- tibble( #constructing new dataframe
+  word = c(
+      "https",
+    "t.co",
+    "by0kbr5hqv",
+    "0001f642",
+    "amp",
+    "sabcnews",
+    "president",
+    "premier",
+    "confirmed",
+    "positive",
+    "breaking"
+  ),
+  lexicon = "twitter"
+)
+
+all_stop_words <- stop_words %>%
+  bind_rows(other_stop_words) # here we are connecting two data frames
+
+tweet_data <- tweet_data  %>% anti_join(all_stop_words)
+
+
+#remove 'GovernmentZA' from tweets dataset
+data_without_gov <- tweet_data[!grepl('GovernmentZA',tweet_data$screen_name),]
+
+#get only government tweets
+gov_tweets <- tweet_data[grepl('GovernmentZA',tweet_data$screen_name),]
+```
+
+
+### Sentiment on overall tweets regarding Covid-19
+
+```{r}
+# Join dataset with Bing lexicon
+sentiment1 <- tweet_data %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+#plot top 10 negative vs positive used words
+sentiment1 %>%
+    group_by(sentiment) %>%
+    top_n(10) %>%
+    ggplot(aes(reorder(word, n), n, fill = sentiment)) +
+    geom_bar(alpha = 0.8, stat = "identity", show.legend = FALSE) +
+    facet_wrap(~sentiment, scales = "free_y") +
+    labs(y = "Contribution to sentiment", x = NULL) +
+    coord_flip()
+```
+
+
+***** 
+
+#### Method 
+This sentiment analysis has been done through the use of the "Bing" lexicon.
+
+This lexicon was first published in:
+
+Minqing Hu and Bing Liu, “Mining and summarizing customer reviews.”, Proceedings of the ACM SIGKDD International Conference on Knowledge Discovery & Data Mining (KDD-2004), Seattle, Washington, USA, Aug 22-25, 2004.
+
+For more info on Bing: https://rdrr.io/cran/tidytext/man/sentiments.html
+
+#### Description
+Looking at the sentiment bar charts one can see both the most used positive and negative words used in tweets and their contribution to the overall sentiment.
+
+
+### Sentiment Wordcloud
+
+```{r}
+wordcloud <- tweet_data %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("red", "blue"), max.words = 100)
+```
+
+
+***** 
+#### Method
+The sentiment wordcloud was built using the "BING" lexicon to categorise the overall sentiment into positive and negative words.
+
+For more info on Bing: https://rdrr.io/cran/tidytext/man/sentiments.html
+
+#### Description
+This sentiment wordcloud is a visual representation of the sentiment found in tweets regarding Covid-19. The red words represent negative sentiment and blue represent positive sentiment. The larger the word appears, the more frequently the word has been used in tweets.
+
+
+### Sentiment in tweets Timelines
+
+```{r}
+# get sentiment using "bing" lexicon
+sentiment2 <- data_without_gov %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(date, sentiment) %>%
+  ungroup()
+
+#sentiment plot for Media Agency Tweets
+plot_media_only <- sentiment2 %>% ggplot(aes(x=date, y=n))+
+  geom_line(aes(fill = sentiment, color = sentiment),  size=.5)+
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size=10,face = "bold"))+
+    theme(plot.title = element_text(hjust = 0.5, size=18))+
+    ylab("Number of Words")+
+    xlab("Media Houses")+
+    ggtitle("Government Vs Media Sentiment Timelines")+
+    theme(aspect.ratio=1/4,legend.title = element_blank()) +
+    scale_color_manual(values=c('red','blue'))
+
+
+# get sentiment using "bing" lexicon
+sentiment3 <- gov_tweets %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(date, sentiment) %>%
+  ungroup()
+
+#sentiment plot for Government Tweets only
+plot_gov <- sentiment3 %>% ggplot(aes(x=date, y=n))+
+  geom_line(aes(fill = sentiment, color = sentiment),  size=.5)+
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size=10,face = "bold"))+
+    theme(plot.title = element_text(hjust = 0.5, size=18))+
+    ylab("Number of Words")+
+    xlab("Government")+
+    ggtitle("Sentiment in Government Tweets")+
+    theme(aspect.ratio=1/4) +
+    scale_color_manual(values=c('red','blue')) 
+
+subplot(plot_gov,style(plot_media_only, showlegend = F),nrows = 2, margin = 0.15,titleX = T)
+```
+
+
+
+*****
+
+#### Method
+This sentiment analysis has been done through the use of the "Bing" lexicon and combines the overall sentiment on a timeline based on the total daily words in tweets for both the Media Houses and the SA Government
+
+#### Description
+Looking at these sentiment timelines there can be seen that the overall sentiment found in Covid-19 tweets as time progresses are significantly more negative than positive.
+
+There can also be seen in the Government tweets timeline that the overall daily tweets has drastically declined since the 28th of May 2020. This is also reflected in the initial timeline.
+
+### Total sentiment percentage timelines
+
+```{r}
+#gov data
+sentiment5 <- gov_tweets %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(date, sentiment) %>%
+  ungroup()
+
+#calculate the portion of each sentiment from total percentage that is 100%
+sentiment5 <- sentiment5  %>%
+  group_by(date, sentiment) %>%
+  summarise(n = sum(n)) %>%
+  mutate(percentage = (n / sum(n))*100)
+
+#create area plot for sentiment in Government Tweets
+sentiment_areaplot1 <- ggplot(sentiment5, aes(x=date, y=(percentage), fill=sentiment)) + 
+    geom_area(alpha=0.6 , size=1, colour="white") + ggtitle("Sentiment percentage of total daily Government tweets") + labs(y = "Sentiment percentage",x = "Government") + scale_fill_discrete(name="Sentiment")
+
+#media data
+sentiment4 <- data_without_gov %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(date, sentiment) %>%
+  ungroup()
+
+#calculate the portion of each sentiment from total percentage that is 100%
+sentiment4 <- sentiment4  %>%
+  group_by(date, sentiment) %>%
+  summarise(n = sum(n)) %>%
+  mutate(percentage = (n / sum(n))*100)
+
+#create area plot for sentiment in Media House Tweets
+sentiment_areaplot2 <- ggplot(sentiment4, aes(x=date, y=(percentage), fill=sentiment)) + 
+    geom_area(alpha=0.6 , size=1, colour="white") + ggtitle("Government Vs Media total sentiment percentage timelines") + labs(y = "Sentiment percentage",x = "Media Houses") + scale_fill_discrete(name="Sentiment") + theme(legend.title = element_blank())
+
+subplot(sentiment_areaplot1,style(sentiment_areaplot2, showlegend = F),nrows = 2, margin = 0.10,titleX = T)
+
+```
+
+
+*****
+#### Method 
+
+This sentiment graph displays the proportion of daily sentiment in an an area plot in order to gain a clearer visual representation of the difference in sentiment. This sentiment analysis has been done through the use of the "Bing" lexicon and also displays the sentiment over a timeline.
+
+
+#### Description
+Looking at the government area plot in comparison with the media house area plot, there can be seen that the media houses tweet sentiment are significant more negative than the government. For the entire area plot timeline, the media houses' positive sentiment were never larger than the negative sentiment.
+
+### Sentiment per twitter handle
+
+```{r}
+#calculate total sentiment per twitter handle/account
+tweetsentiment <- tweet_data %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(date,screen_name, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative)
+
+#plot a graph for the sentiment of each twitter acount/handle
+Sent_Plot<- ggplot(tweetsentiment, aes(date,sentiment, fill = screen_name)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~screen_name, ncol = 2, scales = "free")
+
+ggplotly(Sent_Plot)
+```
+
+*****
+#### Method 
+This sentiment analysis has been done through the use of the "Bing" lexicon. The overall sentiment is calculated by subtracting the amount of negative words from the amount of positive words in order to obtain the difference and identify which sentiment category appears the most.
+
+
+#### Description
+By visualising and comparing each facet representing the different twitter accounts, there can be seen that the overall sentiment for all the various accounts are mostly negative. 
+
+
+### NRC Sentiment
+
+```{r}
+#join dataset with NRC lexicon
+tweet_nrc_gov <- gov_tweets %>%
+  inner_join(get_sentiments("nrc"))
+
+# NRC sentiment plot for Government tweets only
+nrc_plot_gov <- tweet_nrc_gov %>%
+  group_by(sentiment) %>%
+  summarise(word_count = n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count)) %>%
+  ggplot(aes(sentiment, word_count, fill = -word_count)) +
+  geom_col() +
+  guides(fill = FALSE) + #Turn off the legend
+  labs(x = NULL, y = "Government") +
+  scale_y_continuous(limits = c(0, 3000)) + #Hard code the axis limit
+  ggtitle("Overall Tweet NRC Sentiment from RSA Government") +
+  coord_flip()
+
+#join dataset with NRC lexicon
+tweet_nrc <- data_without_gov %>%
+  inner_join(get_sentiments("nrc"))
+
+# NRC sentiment plot for Media House Tweets only tweets only
+nrc_plot_media <- tweet_nrc %>%
+  group_by(sentiment) %>%
+  summarise(word_count = n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count)) %>%
+  #Use `fill = -word_count` to make the larger bars darker
+  ggplot(aes(sentiment, word_count, fill = -word_count)) +
+  geom_col() +
+  guides(fill = FALSE) + #Turn off the legend
+  labs(x = NULL, y = "Media Houses") +
+  scale_y_continuous(limits = c(0, 3000)) + #Hard code the axis limit
+  ggtitle("Overall Tweet NRC Sentiment from Media Hoses and Government") +
+  coord_flip() 
+
+#plot both graphs on same plot
+subplot(nrc_plot_gov,style(nrc_plot_media, showlegend = F),nrows = 2, margin = 0.10,titleX = T)
+```
+
+*****
+#### Method 
+The Government and Media House bar charts are based on the "NRC" lexicon that displays the amount of words placed under the various sentiment categories in descending order. 
+
+For more on NRC: https://rdrr.io/cran/lexicon/man/nrc_emotions.html
+
+#### Description
+
+In both plots there can be seen that the sentiment category that contains the most word are the "positive" sentiment category. The is contradicting with the "Bing" sentiment timelines where the deduction is that the majority of words appeared to be negative.
+
+### NRC Sentiment Top Words
+
+```{r}
+
+#filter for top ten words to match NRC sentiment
+plot_words <- tweet_nrc %>%
+  group_by(sentiment) %>%
+  count(word, sort = TRUE) %>%
+  arrange(desc(n)) %>%
+  slice(seq_len(10)) %>%
+  ungroup()
+
+#create NRC plot with each sentiment word category as its own facet
+nrc_top_words <- plot_words %>%
+  ggplot(aes(word, 1, label = word, fill = sentiment )) +
+  geom_point(color = "transparent") +
+  geom_label_repel(force = 1,nudge_y = .5,  direction = "y",box.padding = 0.05,segment.color =   "transparent",size = 3) +
+  facet_grid(~sentiment) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 5),
+        panel.grid = element_blank(), panel.background = element_blank(),
+        panel.border = element_rect("lightgray", fill = NA),
+        strip.text.x = element_text(size = 7),
+        legend.position = "none") +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle(" NRC Sentiment") + 
+  coord_flip()
+
+nrc_top_words
+```
+
+*****
+#### Method 
+This plot is based on the "NRC" lexicon and displays the top 10 most frequently used words per sentiment category.
+
+For more info on the NRC lexicon visit: https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm
+
+
+#### Description
+When looking at this plot, there can be seen that some words appear under multiple sentiment categories. It seems to be ambigues as to why some were appear in multiple in the context of Covid-19.
+
+### AFINN Sentiment Plot
+
+```{r}
+# join main dataset with AFINN lexicon
+afinn2 <- tweet_data %>%
+  inner_join(get_sentiments("afinn"))  %>%
+  group_by(date,screen_name) %>%
+  summarize(value = sum(value)) # get the sum of the sentiment values per day per twitter account
+
+# AFINN sentiment plot with each twitter account as its own facet  
+afinn_Plot2<- ggplot(afinn2, aes(date,value, fill = screen_name)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~screen_name, ncol = 2, scales = "free")
+
+ggplotly(afinn_Plot2)
+```
+
+*****
+#### Method 
+This plot is based on the "AFINN" lexicon and displays the overall sentiment for all the various twitter accounts.The AFINN lexicon assigns words with a score that runs between -5 and 5, with negative scores indicating negative sentiment and positive scores indicating positive sentiment.
+
+For more info on AFINN visit: http://www2.imm.dtu.dk/pubdb/pubs/6010-full.html
+
+#### Description
+
+There can be seen that the overall sentiment is mostly negative which corresponds with plots using the BING lexicon. When looking at the three lexicons combined, there can be concluded that the NRC lexicon is differences the most in terms of the sentiment found in tweet regarding Covid-19. 
+
+
+
+
+
+
+
+

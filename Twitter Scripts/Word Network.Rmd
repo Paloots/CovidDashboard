@@ -1,0 +1,191 @@
+---
+title: "Covid-19 Twitter Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    navbar:
+      - { align: left, icon: "ion-social-twitter-outline", href: " " }
+      - { title: " Post Frequancy", href: "Index.html", align: left, icon: "ion-arrow-graph-up-right" }
+      - { title: "Topic Models", href: "Topic-Models.html", align: left, icon: "ion-android-hangout" }
+      - { title: "Word Network", href: "Word-Network.html", align: left, icon: "ion-android-share-alt" }
+      - { title: "Sentiment", href: "Sentiment.html", align: left, icon: "ion-android-star-half" }
+    storyboard: true
+  
+---
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(textdata)
+library(tidytext)
+library(rtweet)
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(stringr)
+library(sqldf)
+library(topicmodels)
+#library(devtools)
+
+#install_github("cbail/textnets")
+
+library(textnets)
+library(tidyr)
+library(igraph)
+library(ggraph)
+library(visNetwork)
+library(networkD3)
+
+
+```
+
+```{r}
+dat<- read_csv(file = "Data/Tweet_dates.csv")
+```
+### Bi-gram Word Network
+
+```{r}
+#Splitting text into Bi-Grams 
+
+Tweet_Bi_Grams<- dat %>% select(c(screen_name,text)) %>% unnest_tokens(bigram,text,token = "ngrams",n=2)
+
+# Tweet_Bi_Grams %>%  count(bigram, sort = TRUE)
+ 
+Tweet_Bi_Grams_Sep<- Tweet_Bi_Grams %>%   separate(bigram, c("word1", "word2"), sep = " ")
+ 
+```
+
+```{r include=FALSE}
+## Creating Stop Word Dictionary 
+
+data("stop_words")
+
+other_stop_words <- tibble( #constructing new dataframe
+  word = c(
+    #"covid",
+    #"lockdown",
+    "by0kbr5hqv",
+    "0001f642",
+    "e5wqc2m8va",
+    #"coronavirus",
+    "dstv403",
+    #"enca",
+    "gkhn5smo6b",
+    #"sa",
+    #"south",
+    #"africa",
+    #"pandemic",
+    #"ramaphosa",
+    "https",
+    "t.co",
+   # "news24",
+    #"sabcnews",
+    "hot",
+    "press",
+    "salpatel786",
+    "2020",
+    "day59oflockdown",
+    "breaking"
+    
+  ),
+  lexicon = "twitter"
+)
+
+
+all_stop_words <- stop_words %>%
+  bind_rows(other_stop_words) # here we are connecting two data frames
+
+```
+
+```{r}
+# Filtering Stop Words Out 
+
+bigrams_filtered <- Tweet_Bi_Grams_Sep %>%
+  filter(!word1 %in% all_stop_words$word) %>%
+  filter(!word2 %in% all_stop_words$word)  
+  
+```
+
+```{r}
+#Counting Amount of time Bi-Gram appears 
+
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+```
+
+```{r}
+# Creating iGraph Data Frame
+
+bigram_graph <- bigram_counts %>%
+  filter(n > 15) %>%
+  graph_from_data_frame()
+
+```
+
+```{r}
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name)) +
+  theme_void()
+```
+
+
+******
+
+#### Method 
+
+This Graph is a bi-gram network graph based on words that appear in combination at least 15 times in the corpus. It was built using the "igraph" package in R.
+
+#### Description 
+In this graph one can see the words that has the strongest relationship is covid and 19. Looking at the words clustered around the 19 (from covid 19) one can see the words related to the virus's impact in the center. One can also see intervention methods in the form of the relief fund clustered close to center of the Covid 19 cluster. There are two clusters connecting directly to the Covid 19 cluster namely the lockdown and sabcnews clusters. The sabcnews cluster is the only one that bridges the gap between Covid 19 and the presidency. The lockdown cluster on the other hand is the bridge between ministers when looking at the word network
+
+### Interactive Bi-Gram Network Plot 
+
+```{r}
+## Selecting bi grams that appear more than 15 time 
+bigram_graph2 <- bigram_counts %>%
+  filter(n > 15) 
+
+simpleNetwork(bigram_graph2,zoom = T,fontSize = 12)
+
+```
+
+*****
+
+#### Description 
+
+This is exactly the same plot as the other Bi-Gram network plot. This plot is made interactive so that one can change the perspective. 
+
+
+### Author Based Word Network 
+```{r message=FALSE}
+Tweet_Net<-dat%>%select(c(screen_name,text)) 
+
+# prepareing data for text network 
+Prep_Tweet<- PrepText(Tweet_Net,groupvar = "screen_name", 
+                         textvar = "text", 
+                          node_type = "groups", 
+                         tokenizer = "words", 
+                         pos = "nouns", 
+                         remove_stop_words = TRUE,
+                         compound_nouns = TRUE,remove_numbers = T)
+
+# Create Text Network
+Tweet_Text_Net<- CreateTextnet(Prep_Tweet)
+
+# Plot text Network 
+VisTextNet(Tweet_Text_Net,alpha=.35)
+
+```
+
+****
+#### Method 
+
+This is an Author based word network that looks at the use of nouns within Tweets to build the text network. This was created using the "textnets" package developed by Dr. C. Bail.
+
+Available at: https://github.com/cbail/textnets
+
+#### Description 
+
+Looking at this network one can see that there are two distinct groups when looking at their usage of nouns within their Tweets. The Government and two other media houses use similar text in their Tweets, with eNCA and SABSNews sharing the most similarities. On the other hand, News24 and ewnupdates has similarities with each other but no direct connection to the Government when looking at their use of language.   
